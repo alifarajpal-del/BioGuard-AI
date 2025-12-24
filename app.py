@@ -2,164 +2,134 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 import json
+import os
 
-# 1. إعدادات الهوية البصرية المتقدمة (Glassmorphism & Cyberpunk Theme)
-st.set_page_config(page_title="BioGuard AI | Pro Dashboard", layout="wide", initial_sidebar_state="collapsed")
+# ---------------- CONFIG ----------------
+st.set_page_config(
+    page_title="BioGuard AI",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+# ---------------- STYLE ----------------
 st.markdown("""
 <style>
-    /* تحويل الخلفية إلى فضاء رقمي متدرج */
-    .stApp {
-        background: radial-gradient(circle at top right, #0d1b2a 0%, #010409 100%);
-        color: #e6edf3;
-        font-family: 'Inter', sans-serif;
-    }
-    
-    /* تصميم الحاويات الزجاجية (Glass Cards) */
-    .glass-panel {
-        background: rgba(23, 32, 42, 0.7);
-        backdrop-filter: blur(20px);
-        border-radius: 24px;
-        padding: 30px;
-        border: 1px solid rgba(0, 242, 255, 0.2);
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-        margin-bottom: 25px;
-    }
+.stApp {
+    background: radial-gradient(circle at center, #16222a 0%, #0a0e14 100%);
+    color: white;
+}
+.card {
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(18px);
+    border-radius: 22px;
+    padding: 28px;
+    border: 1px solid rgba(0,242,255,0.25);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+    margin-top: 20px;
+}
+.safe { border-color:#00ff88; }
+.warn { border-color:#ffd000; }
+.critical { border-color:#ff4d4d; }
 
-    /* أزرار الأكشن المتوهجة */
-    .stButton>button {
-        width: 100%;
-        background: linear-gradient(90deg, #00f2ff 0%, #0072ff 100%);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 15px;
-        font-weight: 800;
-        letter-spacing: 1px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(0, 242, 255, 0.3);
-    }
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0, 242, 255, 0.5);
-    }
-
-    /* مؤشرات الحالة الصحية */
-    .status-badge {
-        padding: 10px 20px;
-        border-radius: 50px;
-        font-weight: bold;
-        display: inline-block;
-        margin-bottom: 10px;
-    }
-    .safe { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; }
-    .critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
-    
-    /* تصميم حقل الرفع */
-    .stFileUploader {
-        border: 2px dashed rgba(0, 242, 255, 0.3);
-        border-radius: 20px;
-        background: rgba(255, 255, 255, 0.02);
-    }
+.risk-bar {
+    height: 10px;
+    border-radius: 20px;
+    background: linear-gradient(90deg,#00ff88,#ffd000,#ff4d4d);
+    margin: 10px 0;
+}
+h1,h2,h3 { color:#00f2ff; font-family:Segoe UI; }
+small { color:#94a3b8; }
 </style>
 """, unsafe_allow_html=True)
 
-# 2. نظام الاتصال الذكي (إصلاح الـ 404 نهائياً)
-def initialize_ai():
+# ---------------- HEADER ----------------
+st.markdown("<div style='text-align:center'>", unsafe_allow_html=True)
+st.title("🛡️ BioGuard AI")
+st.markdown("<small>Personal Preventive Health Intelligence</small>")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------- HEALTH PROFILE ----------------
+with st.expander("🧬 Health Profile", expanded=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        high_bp = st.checkbox("High Blood Pressure")
+        diabetes = st.checkbox("Diabetes")
+    with col2:
+        salt_sens = st.slider("Salt Sensitivity", 1, 5, 3)
+        sugar_sens = st.slider("Sugar Sensitivity", 1, 5, 3)
+
+# ---------------- IMAGE INPUT ----------------
+uploaded = st.file_uploader(
+    "Scan food product image",
+    type=["jpg","png","jpeg","webp"]
+)
+
+def safe_json(text):
     try:
-        genai.configure(api_key="AIzaSyA6PghCI7HTdVUvrGgKqDhPFIW20XPJegI")
-        # استخدام النسخة المستقرة بشكل صريح
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except Exception as e:
-        st.error(f"AI Engine Failure: {str(e)}")
+        text = text[text.find("{"):text.rfind("}")+1]
+        return json.loads(text)
+    except:
         return None
 
-model = initialize_ai()
+# ---------------- ANALYSIS ----------------
+if uploaded:
+    img = Image.open(uploaded).convert("RGB")
+    st.image(img, caption="Scanned Product", use_column_width=True)
 
-# 3. واجهة المستخدم (كل الخيارات التي ناقشناها)
-with st.container():
-    col_header, col_profile = st.columns([2, 1])
-    with col_header:
-        st.markdown("<h1 style='color: #00f2ff; margin-bottom: 0;'>🛡️ BioGuard AI</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #94a3b8;'>Advanced Bio-Nutritional Intelligence</p>", unsafe_allow_html=True)
-    
-    with col_profile:
-        # دمج "البروفايل الحيوي" الذي ناقشناه
-        with st.expander("👤 بروفايل المستخدم"):
-            user_condition = st.multiselect("الحالات الصحية:", ["ضغط دم مرتفع", "سكري", "حساسية لاكتوز"], default=["ضغط دم مرتفع"])
-            lang = st.radio("اللغة / Language", ["العربية", "English", "Français"], horizontal=True)
+    if st.button("🔍 Analyse Safely"):
+        with st.spinner("Analyzing health impact..."):
 
-# مساحة العمل الرئيسية
-col_left, col_right = st.columns([1, 1])
+            prompt = f"""
+You are a preventive health AI.
 
-with col_left:
-    st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
-    st.subheader("📸 فحص المنتج")
-    uploaded_file = st.file_uploader("قم بسحب صورة المنتج أو جدول المكونات هنا", type=["jpg", "png", "jpeg", "webp"])
-    
-    # خيارات إضافية ناقشناها سابقاً (Simulation)
-    st.toggle("تفعيل الإشعارات الذكية", value=True)
-    st.toggle("ربط مباشر بالكاميرا", value=False)
-    st.markdown('</div>', unsafe_allow_html=True)
+User conditions:
+- High Blood Pressure: {high_bp}
+- Diabetes: {diabetes}
+- Salt sensitivity: {salt_sens}/5
+- Sugar sensitivity: {sugar_sens}/5
 
-if uploaded_file:
-    img = Image.open(uploaded_file).convert("RGB")
-    with col_left:
-        st.image(img, use_container_width=True, caption="الصورة التي سيتم تحليلها")
-    
-    with col_right:
-        st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
-        if st.button("ANALYSE INTELIGENTE | ابدأ التحليل"):
-            with st.spinner("🧠 جاري التفكير بعمق في المكونات والآثار الحيوية..."):
-                # برومبت صارم لاستخراج JSON دقيق
-                prompt = f"""
-                You are a senior bio-chemist. Analyze this food product based on these user conditions: {user_condition}.
-                Return ONLY a JSON object:
-                {{
-                  "name": "Product Name",
-                  "calories": "Number",
-                  "health_score": "safe/warning/critical",
-                  "blood_pressure_impact": "High/Low/Medium",
-                  "risky_additives": ["list items"],
-                  "arabic_summary": "Short 2 sentence advice in Arabic",
-                  "healthy_alternative": "Name of a real healthy alternative"
-                }}
-                """
-                try:
-                    response = model.generate_content([prompt, img])
-                    # تنظيف الاستجابة من أي كود ماركداون
-                    raw_data = response.text.replace('```json', '').replace('```', '').strip()
-                    data = json.loads(raw_data)
-                    
-                    # عرض النتائج بطريقة سينمائية
-                    status_class = "safe" if data['health_score'] == "safe" else "critical"
-                    st.markdown(f"<div class='status-badge {status_class}'>الحالة: {data['health_score'].upper()}</div>", unsafe_allow_html=True)
-                    
-                    st.markdown(f"## 📦 {data['name']}")
-                    
-                    c1, c2 = st.columns(2)
-                    c1.metric("🔥 السعرات", data['calories'])
-                    c2.metric("💓 تأثير الضغط", data['blood_pressure_impact'])
-                    
-                    st.markdown("### 🚨 الإضافات المرصودة:")
-                    for item in data['risky_additives']:
-                        st.markdown(f"- `{item}`")
-                    
-                    st.info(data['arabic_summary'])
-                    
-                    # ميزة "البديل الصحي" التي ناقشناها
-                    st.success(f"💡 البديل المقترح: **{data['healthy_alternative']}**")
-                    if st.button("🛒 اطلب البديل الآن (ربح عمولة)"):
-                        st.balloons()
-                        st.write("يتم الآن توجيهك لمتجر الشركاء...")
-                        
-                except Exception as e:
-                    st.error("⚠️ خطأ في معالجة البيانات. يرجى التأكد من وضوح جدول المكونات.")
-                    st.write(f"تفاصيل تقنية للبرمج: {str(e)}")
-        st.markdown('</div>', unsafe_allow_html=True)
-else:
-    with col_right:
-        st.markdown('<div class="glass-panel" style="text-align:center; padding:100px 20px;">', unsafe_allow_html=True)
-        st.markdown("<h2 style='color: #475569;'>بانتظار الصورة...</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #475569;'>قم برفع صورة المنتج لبدء التحليل الحيوي المتقدم</p>", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+Analyze the product image.
+
+Return ONLY valid JSON:
+{{
+ "name":"",
+ "calories":"",
+ "risk_score":0-100,
+ "status":"safe|warning|critical",
+ "reason":"",
+ "medical_explanation_ar":"",
+ "recommendation_ar":""
+}}
+"""
+
+            try:
+                response = model.generate_content([prompt, img])
+                data = safe_json(response.text)
+
+                if not data:
+                    st.error("Could not analyze product clearly.")
+                else:
+                    status_class = (
+                        "safe" if data["status"]=="safe"
+                        else "warn" if data["status"]=="warning"
+                        else "critical"
+                    )
+
+                    st.markdown(f"""
+                    <div class="card {status_class}">
+                        <h2>{data["name"]}</h2>
+                        <p>🔥 {data["calories"]} calories</p>
+                        <div class="risk-bar"></div>
+                        <p><b>Risk Score:</b> {data["risk_score"]}/100</p>
+                        <hr>
+                        <p><b>Why?</b><br>{data["medical_explanation_ar"]}</p>
+                        <hr>
+                        <p><b>Recommendation:</b><br>{data["recommendation_ar"]}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            except Exception:
+                st.error("Analysis failed. Try a clearer image.")
