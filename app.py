@@ -3,137 +3,129 @@ import google.generativeai as genai
 from PIL import Image
 import json
 import os
+import re
 
-# ---------------- CONFIG ----------------
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(
     page_title="BioGuard AI",
+    page_icon="🛡️",
     layout="centered"
 )
 
-# Secure API key
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
-
-# ---------------- STYLE ----------------
+# ---------------- CUSTOM CSS ----------------
 st.markdown("""
 <style>
 .stApp {
-    background: radial-gradient(circle at center, #16222a 0%, #0a0e14 100%);
+    background: radial-gradient(circle at center, #1a2a3a 0%, #0a0e14 100%);
     color: white;
 }
-.card {
-    background: rgba(255,255,255,0.04);
+.result-card {
+    background: rgba(255, 255, 255, 0.04);
     backdrop-filter: blur(18px);
     border-radius: 22px;
-    padding: 28px;
-    border: 1px solid rgba(0,242,255,0.25);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.8);
-    margin-top: 20px;
+    padding: 26px;
+    margin-top: 25px;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
 }
-.safe { border-color:#00ff88; }
-.warn { border-color:#ffd000; }
-.critical { border-color:#ff4d4d; }
-.risk-bar {
-    height: 10px;
-    border-radius: 20px;
-    background: linear-gradient(90deg,#00ff88,#ffd000,#ff4d4d);
-    margin: 10px 0;
+.alert-safe {
+    border: 2px solid #00ff88;
 }
-h1,h2,h3 { color:#00f2ff; }
+.alert-critical {
+    border: 2px solid #ff4d4d;
+}
+.stButton>button {
+    background: linear-gradient(90deg, #00f2ff, #0072ff);
+    color: white;
+    border: none;
+    border-radius: 40px;
+    padding: 12px 45px;
+    font-weight: 700;
+    box-shadow: 0 0 18px rgba(0, 242, 255, 0.45);
+}
+h1, h2, h3 {
+    color: #00f2ff !important;
+    font-family: 'Segoe UI', sans-serif;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- HEADER ----------------
-st.markdown("<div style='text-align:center'>", unsafe_allow_html=True)
-st.title("🛡️ BioGuard AI")
-st.markdown("<small>Personal Preventive Health Intelligence</small>")
-st.markdown("</div>", unsafe_allow_html=True)
+# ---------------- GEMINI SETUP ----------------
+API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# ---------------- HEALTH PROFILE ----------------
-with st.expander("🧬 Health Profile", expanded=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        high_bp = st.checkbox("High Blood Pressure")
-        diabetes = st.checkbox("Diabetes")
-    with col2:
-        salt_sens = st.slider("Salt Sensitivity", 1, 5, 3)
-        sugar_sens = st.slider("Sugar Sensitivity", 1, 5, 3)
+if not API_KEY:
+    st.error("❌ API Key غير موجود. تأكد من ضبط Environment Variable")
+    st.stop()
 
-# ---------------- IMAGE INPUT ----------------
-uploaded = st.file_uploader(
-    "Scan food product image",
-    type=["jpg","png","jpeg","webp"]
+genai.configure(api_key=API_KEY)
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    safety_settings={
+        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+        "HARM_CATEGORY_SEXUAL_CONTENT": "BLOCK_NONE",
+        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+    }
 )
 
-def safe_json(text):
-    try:
-        text = text[text.find("{"):text.rfind("}")+1]
-        return json.loads(text)
-    except:
-        return None
+# ---------------- UI ----------------
+st.markdown("<div style='text-align:center'>", unsafe_allow_html=True)
+st.title("🛡️ BioGuard AI")
+st.markdown("<p style='color:#94a3b8'>Smart Food Safety Scanner</p>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- ANALYSIS ----------------
-if uploaded:
-    img = Image.open(uploaded).convert("RGB")
-    st.image(img, caption="Scanned Product", use_column_width=True)
+uploaded_file = st.file_uploader(
+    "📷 ارفع صورة المنتج",
+    type=["jpg", "jpeg", "png", "webp"]
+)
 
-    if st.button("🔍 Analyse Safely"):
-        with st.spinner("Analyzing health impact..."):
+# ---------------- IMAGE ANALYSIS ----------------
+if uploaded_file:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Product Image", use_column_width=True)
 
-            prompt = f"""
-You are a preventive health AI.
+    if st.button("🔍 ANALYZE PRODUCT"):
+        with st.spinner("جاري التحليل الذكي..."):
+            prompt = """
+You are a food safety expert AI.
 
-User conditions:
-- High Blood Pressure: {high_bp}
-- Diabetes: {diabetes}
-- Salt sensitivity: {salt_sens}/5
-- Sugar sensitivity: {sugar_sens}/5
+Analyze the product in the image.
+Return ONLY valid JSON in Arabic.
 
-Analyze the product image.
-
-Return ONLY valid JSON:
-{{
- "name":"",
- "calories":"",
- "risk_score":0-100,
- "status":"safe|warning|critical",
- "medical_explanation_ar":"",
- "recommendation_ar":""
-}}
+Schema:
+{
+  "name": "اسم المنتج",
+  "calories": "عدد السعرات التقريبي",
+  "status": "safe أو critical",
+  "msg": "شرح صحي مختصر وواضح"
+}
 """
 
             try:
-                response = model.generate_content([prompt, img])
+                response = model.generate_content([prompt, image])
+                raw_text = response.text
 
-                if not response or not response.candidates:
-                    st.error("AI returned no response.")
-                    st.stop()
+                # استخراج JSON حتى لو كان محاط بنص
+                match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+                if not match:
+                    raise ValueError("Invalid JSON")
 
-                content = response.candidates[0].content.parts[0].text
-                data = safe_json(content)
+                data = json.loads(match.group())
 
-                if data is None:
-                    st.warning("Could not analyze product clearly. Try another image.")
-                    st.stop()
-
-                status_class = (
-                    "safe" if data["status"] == "safe"
-                    else "warn" if data["status"] == "warning"
-                    else "critical"
-                )
+                card_class = "alert-safe" if data["status"] == "safe" else "alert-critical"
+                icon = "✅" if data["status"] == "safe" else "⚠️"
 
                 st.markdown(f"""
-                <div class="card {status_class}">
-                    <h2>{data["name"]}</h2>
-                    <p>🔥 {data["calories"]} calories</p>
-                    <div class="risk-bar"></div>
-                    <p><b>Risk Score:</b> {data["risk_score"]}/100</p>
-                    <hr>
-                    <p><b>Why?</b><br>{data["medical_explanation_ar"]}</p>
-                    <hr>
-                    <p><b>Recommendation:</b><br>{data["recommendation_ar"]}</p>
+                <div class="result-card {card_class}">
+                    <h2>{icon} {data["name"]}</h2>
+                    <h3 style="color:white">🔥 {data["calories"]} سعرة حرارية</h3>
+                    <hr style="opacity:0.15">
+                    <p style="font-size:1.15em;line-height:1.7">
+                        {data["msg"]}
+                    </p>
                 </div>
                 """, unsafe_allow_html=True)
 
             except Exception:
-                st.error("Analysis failed. Please try again.")
+                st.error("❌ تعذر تحليل الصورة. جرّب صورة أوضح للمكونات.")
