@@ -7,10 +7,10 @@ import os
 # ---------------- CONFIG ----------------
 st.set_page_config(
     page_title="BioGuard AI",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    layout="centered"
 )
 
+# Secure API key
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -33,15 +33,13 @@ st.markdown("""
 .safe { border-color:#00ff88; }
 .warn { border-color:#ffd000; }
 .critical { border-color:#ff4d4d; }
-
 .risk-bar {
     height: 10px;
     border-radius: 20px;
     background: linear-gradient(90deg,#00ff88,#ffd000,#ff4d4d);
     margin: 10px 0;
 }
-h1,h2,h3 { color:#00f2ff; font-family:Segoe UI; }
-small { color:#94a3b8; }
+h1,h2,h3 { color:#00f2ff; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -99,7 +97,6 @@ Return ONLY valid JSON:
  "calories":"",
  "risk_score":0-100,
  "status":"safe|warning|critical",
- "reason":"",
  "medical_explanation_ar":"",
  "recommendation_ar":""
 }}
@@ -107,29 +104,36 @@ Return ONLY valid JSON:
 
             try:
                 response = model.generate_content([prompt, img])
-                data = safe_json(response.text)
 
-                if not data:
-                    st.error("Could not analyze product clearly.")
-                else:
-                    status_class = (
-                        "safe" if data["status"]=="safe"
-                        else "warn" if data["status"]=="warning"
-                        else "critical"
-                    )
+                if not response or not response.candidates:
+                    st.error("AI returned no response.")
+                    st.stop()
 
-                    st.markdown(f"""
-                    <div class="card {status_class}">
-                        <h2>{data["name"]}</h2>
-                        <p>🔥 {data["calories"]} calories</p>
-                        <div class="risk-bar"></div>
-                        <p><b>Risk Score:</b> {data["risk_score"]}/100</p>
-                        <hr>
-                        <p><b>Why?</b><br>{data["medical_explanation_ar"]}</p>
-                        <hr>
-                        <p><b>Recommendation:</b><br>{data["recommendation_ar"]}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                content = response.candidates[0].content.parts[0].text
+                data = safe_json(content)
+
+                if data is None:
+                    st.warning("Could not analyze product clearly. Try another image.")
+                    st.stop()
+
+                status_class = (
+                    "safe" if data["status"] == "safe"
+                    else "warn" if data["status"] == "warning"
+                    else "critical"
+                )
+
+                st.markdown(f"""
+                <div class="card {status_class}">
+                    <h2>{data["name"]}</h2>
+                    <p>🔥 {data["calories"]} calories</p>
+                    <div class="risk-bar"></div>
+                    <p><b>Risk Score:</b> {data["risk_score"]}/100</p>
+                    <hr>
+                    <p><b>Why?</b><br>{data["medical_explanation_ar"]}</p>
+                    <hr>
+                    <p><b>Recommendation:</b><br>{data["recommendation_ar"]}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
             except Exception:
-                st.error("Analysis failed. Try a clearer image.")
+                st.error("Analysis failed. Please try again.")
